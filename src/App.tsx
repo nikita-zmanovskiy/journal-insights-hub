@@ -8,6 +8,7 @@ import Chat from "./pages/Chat";
 import Login from "./pages/Login";
 import Registration from "./pages/Registration";
 import AdminAnalyst from "./pages/AdminAnalyst";
+import ScenarioAnalysis from "./pages/ScenarioAnalysis";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/registration" element={<Registration />} />
             <Route path="/adminanalyst" element={<AdminAnalyst />} />
+            <Route path="/scenario-analysis" element={<ScenarioAnalysis />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
