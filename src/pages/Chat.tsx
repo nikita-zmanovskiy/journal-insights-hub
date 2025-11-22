@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -83,7 +83,7 @@ const Chat = () => {
     if (error) {
       console.error('Error loading messages:', error);
     } else {
-      setMessages(data || []);
+      setMessages((data || []) as Message[]);
     }
   };
 
