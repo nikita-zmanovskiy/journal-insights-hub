@@ -158,9 +158,52 @@ const Chat = () => {
       return;
     }
 
-    // Simulate AI response (replace with actual AI integration)
-    setTimeout(async () => {
-      const aiResponse = `Это демо-ответ на ваше сообщение: "${userMessage}". Здесь будет интеграция с AI.`;
+    try {
+      // Real API call to analyze message
+      const response = await fetch('http://158.160.98.70:8000/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: userMessage }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Format analysis response
+      const analysisContent = `
+📊 **Результат анализа**
+
+🔞 **Рейтинг:** ${data.overall_rating}
+📝 **Краткое описание:** ${data.summary}
+
+📈 **Статистика:**
+• Всего предложений: ${data.statistics.total_sentences}
+• Проблемных: ${data.statistics.problematic_sentences}
+• Процент проблемных: ${data.statistics.problematic_percentage}%
+
+🚫 **Нарушения:**
+${data.statistics.violations.violence > 0 ? `• Насилие: ${data.statistics.violations.violence}\n` : ''}${data.statistics.violations.profanity > 0 ? `• Ненормативная лексика: ${data.statistics.violations.profanity}\n` : ''}${data.statistics.violations.sexual_content > 0 ? `• Сексуальный контент: ${data.statistics.violations.sexual_content}\n` : ''}${data.statistics.violations.drugs_alcohol > 0 ? `• Наркотики/алкоголь: ${data.statistics.violations.drugs_alcohol}\n` : ''}${data.statistics.violations.fear_elements > 0 ? `• Элементы страха: ${data.statistics.violations.fear_elements}` : ''}
+      `.trim();
+
+      await supabase
+        .from('messages')
+        .insert([
+          {
+            conversation_id: activeConversation,
+            role: 'assistant',
+            content: analysisContent,
+          },
+        ]);
+    } catch (error) {
+      console.error('API Error:', error);
+      
+      // Fallback to simple response
+      const aiResponse = `⚠️ API временно недоступно. Ваше сообщение: "${userMessage}"`;
       
       await supabase
         .from('messages')
@@ -171,9 +214,9 @@ const Chat = () => {
             content: aiResponse,
           },
         ]);
-
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -224,10 +267,10 @@ const Chat = () => {
           <Button
             variant="ghost"
             className="w-full justify-start"
-            onClick={() => navigate('/adminanalyst')}
+            onClick={() => navigate('/scenario-analysis')}
           >
             <BarChart3 className="mr-2 h-4 w-4" />
-            Анализ сценариев
+            Детальный анализ
           </Button>
           <Button
             variant="ghost"
@@ -285,8 +328,8 @@ const Chat = () => {
                   className={cn(
                     'max-w-[80%] rounded-2xl px-4 py-3',
                     message.role === 'user'
-                      ? 'bg-gradient-to-r from-primary to-accent text-primary-foreground'
-                      : 'glass-panel'
+                      ? 'bg-gradient-to-r from-primary to-accent text-primary-foreground message-user'
+                      : 'glass-panel message-assistant'
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
