@@ -3,6 +3,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { ParentsGuideSection } from '@/components/analysis/ParentsGuideSection';
+import { SceneTimeline } from '@/components/analysis/SceneTimeline';
+import { SceneEditor } from '@/components/analysis/SceneEditor';
+import { ViolationCharts } from '@/components/analysis/ViolationCharts';
 
 const API_URL = 'http://158.160.98.70:8000';
 
@@ -23,6 +29,27 @@ interface AnalysisReport {
       fear_elements: number;
     };
   };
+  scenes?: Array<{
+    id: string;
+    title: string;
+    timestamp: string;
+    duration: string;
+    violations: string[];
+    severity: 'None' | 'Mild' | 'Moderate' | 'Severe';
+    text: string;
+  }>;
+  detailed_violations?: Array<{
+    category: string;
+    severity: 'None' | 'Mild' | 'Moderate' | 'Severe';
+    count: number;
+    percentage: number;
+    episodes: Array<{
+      scene: string;
+      description: string;
+      timestamp: string;
+      isFalsePositive?: boolean;
+    }>;
+  }>;
 }
 
 const ScenarioAnalysis = () => {
@@ -30,6 +57,8 @@ const ScenarioAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
+  const [selectedScene, setSelectedScene] = useState<any>(null);
+  const [violations, setViolations] = useState<any[]>([]);
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -80,6 +109,29 @@ const ScenarioAnalysis = () => {
       if (data.status === 'done') {
         setAnalysisReport(data);
         setProgress(100);
+        
+        // Process violations for Parents Guide
+        if (data.statistics?.violations) {
+          const processedViolations = Object.entries(data.statistics.violations).map(([key, count]) => {
+            const totalScenes = data.scenes?.length || 100;
+            const percentage = ((count as number) / totalScenes) * 100;
+            
+            let severity: 'None' | 'Mild' | 'Moderate' | 'Severe' = 'None';
+            if (percentage === 0) severity = 'None';
+            else if (percentage < 10) severity = 'Mild';
+            else if (percentage < 25) severity = 'Moderate';
+            else severity = 'Severe';
+
+            return {
+              category: key,
+              severity,
+              count: count as number,
+              percentage,
+              episodes: data.detailed_violations?.[key] || [],
+            };
+          });
+          setViolations(processedViolations);
+        }
 
         await supabase.from('scenarios').insert([
           {
@@ -108,19 +160,209 @@ const ScenarioAnalysis = () => {
     }
   };
 
+  const handleToggleFalsePositive = (category: string, episodeIndex: number) => {
+    setViolations(prev =>
+      prev.map(v => {
+        if (v.category === category) {
+          const newEpisodes = [...v.episodes];
+          newEpisodes[episodeIndex] = {
+            ...newEpisodes[episodeIndex],
+            isFalsePositive: !newEpisodes[episodeIndex].isFalsePositive,
+          };
+          return { ...v, episodes: newEpisodes };
+        }
+        return v;
+      })
+    );
+  };
+
+  const handleSaveScene = (sceneId: string, newText: string) => {
+    setAnalysisReport(prev => {
+      if (!prev?.scenes) return prev;
+      return {
+        ...prev,
+        scenes: prev.scenes.map(s => (s.id === sceneId ? { ...s, text: newText } : s)),
+      };
+    });
+  };
+
+  const handleReanalyzeScene = async (sceneId: string, text: string) => {
+    toast({
+      title: 'Переанализ сцены',
+      description: 'Отправка запроса на переанализ...',
+    });
+    // API call would go here
+  };
+
+  const handleExportReport = () => {
+    if (!analysisReport) return;
+    
+    const reportData = {
+      filename: analysisReport.filename,
+      rating: analysisReport.overall_rating,
+      summary: analysisReport.summary,
+      statistics: analysisReport.statistics,
+      violations: violations.filter(v => !v.episodes.every((e: any) => e.isFalsePositive)),
+      exportDate: new Date().toISOString(),
+    };
+    
+    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `analysis-report-${analysisReport.filename}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: 'Отчёт экспортирован',
+      description: 'Файл успешно сохранён',
+    });
+  };
+
+  const handleLoadDemo = () => {
+    const demoData: AnalysisReport = {
+      file_id: 'demo-001',
+      filename: 'demo-scenario.pdf',
+      overall_rating: '16+',
+      summary: 'Сценарий содержит умеренное количество нарушений, включая сцены насилия и использование ненормативной лексики. Рекомендуется возрастное ограничение 16+.',
+      statistics: {
+        total_sentences: 450,
+        problematic_sentences: 67,
+        problematic_percentage: 14.9,
+        violations: {
+          violence: 23,
+          profanity: 18,
+          sexual_content: 8,
+          drugs_alcohol: 12,
+          fear_elements: 6,
+        },
+      },
+      scenes: [
+        {
+          id: 'scene-1',
+          title: 'Сцена 1: Открытие',
+          timestamp: '00:00:00',
+          duration: '3:24',
+          violations: [],
+          severity: 'None',
+          text: 'Главный герой просыпается в своей квартире. Солнечный свет проникает через окна.',
+        },
+        {
+          id: 'scene-2',
+          title: 'Сцена 2: Конфликт',
+          timestamp: '00:03:24',
+          duration: '5:12',
+          violations: ['Насилие', 'Нецензурная лексика'],
+          severity: 'Moderate',
+          text: 'Происходит драка в баре. Персонажи используют грубые выражения.',
+        },
+        {
+          id: 'scene-3',
+          title: 'Сцена 3: Размышления',
+          timestamp: '00:08:36',
+          duration: '2:45',
+          violations: ['Алкоголь'],
+          severity: 'Mild',
+          text: 'Герой пьет виски и размышляет о произошедшем.',
+        },
+      ],
+      detailed_violations: [
+        {
+          category: 'violence',
+          severity: 'Moderate' as const,
+          count: 23,
+          percentage: 5.1,
+          episodes: [
+            {
+              scene: 'Сцена 2',
+              description: 'Драка в баре с нанесением телесных повреждений',
+              timestamp: '00:04:15',
+            },
+            {
+              scene: 'Сцена 5',
+              description: 'Перестрелка между главными героями и антагонистами',
+              timestamp: '00:15:30',
+            },
+          ],
+        },
+        {
+          category: 'profanity',
+          severity: 'Mild' as const,
+          count: 18,
+          percentage: 4.0,
+          episodes: [
+            {
+              scene: 'Сцена 2',
+              description: 'Использование нецензурной лексики в диалоге',
+              timestamp: '00:05:20',
+            },
+          ],
+        },
+        {
+          category: 'sexual_content',
+          severity: 'Mild' as const,
+          count: 8,
+          percentage: 1.8,
+          episodes: [
+            {
+              scene: 'Сцена 8',
+              description: 'Намеки на интимные отношения без явного показа',
+              timestamp: '00:28:45',
+            },
+          ],
+        },
+        {
+          category: 'drugs_alcohol',
+          severity: 'Mild' as const,
+          count: 12,
+          percentage: 2.7,
+          episodes: [
+            {
+              scene: 'Сцена 3',
+              description: 'Употребление алкоголя главным героем',
+              timestamp: '00:09:10',
+            },
+          ],
+        },
+        {
+          category: 'fear_elements',
+          severity: 'Mild' as const,
+          count: 6,
+          percentage: 1.3,
+          episodes: [
+            {
+              scene: 'Сцена 10',
+              description: 'Напряженная сцена преследования в темном переулке',
+              timestamp: '00:35:20',
+            },
+          ],
+        },
+      ],
+    };
+
+    setAnalysisReport(demoData);
+    setViolations(demoData.detailed_violations || []);
+    
+    toast({
+      title: 'Демо-данные загружены',
+      description: 'Вы можете просмотреть пример анализа сценария',
+    });
+  };
+
   const getRatingColor = (rating: string) => {
     switch (rating) {
       case '0+':
-        return 'text-green-500';
+        return 'text-success';
       case '6+':
-        return 'text-yellow-500';
+        return 'text-warning';
       case '12+':
       case '16+':
-        return 'text-orange-500';
+        return 'text-destructive/80';
       case '18+':
-        return 'text-red-500';
+        return 'text-destructive';
       default:
-        return 'text-gray-500';
+        return 'text-muted-foreground';
     }
   };
 
@@ -148,7 +390,7 @@ const ScenarioAnalysis = () => {
                 type="file"
                 accept=".txt,.pdf,.docx"
                 onChange={handleFileChange}
-                className="w-full px-3 py-2 bg-muted rounded-lg"
+                className="w-full px-3 py-2 bg-muted rounded-lg text-foreground"
               />
               {file && (
                 <p className="text-sm text-muted-foreground">
@@ -159,9 +401,26 @@ const ScenarioAnalysis = () => {
               <button
                 onClick={handleUpload}
                 disabled={!file || loading}
-                className="w-full px-4 py-2 bg-gradient-to-r from-primary to-accent rounded-lg hover:opacity-90 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-gradient-to-r from-primary to-accent text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50 transition-all"
               >
                 {loading ? 'Анализ...' : 'Загрузить и анализировать'}
+              </button>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">или</span>
+                </div>
+              </div>
+              
+              <button
+                onClick={handleLoadDemo}
+                disabled={loading}
+                className="w-full px-4 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-all disabled:opacity-50"
+              >
+                📊 Загрузить демо-данные
               </button>
 
               {progress > 0 && (
@@ -194,8 +453,14 @@ const ScenarioAnalysis = () => {
             ) : (
               <div className="space-y-6">
                 <div className="glass-panel rounded-lg p-6">
-                  <h2 className="text-2xl font-semibold mb-4">Общий обзор</h2>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-semibold">Общий обзор</h2>
+                    <Button onClick={handleExportReport} variant="outline">
+                      📥 Экспортировать отчёт
+                    </Button>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-4 mb-4">
                     <div className="glass-panel rounded-lg p-4">
                       <p className="text-sm text-muted-foreground">Общий рейтинг</p>
                       <p className={`text-3xl font-bold ${getRatingColor(analysisReport.overall_rating)}`}>
@@ -203,10 +468,15 @@ const ScenarioAnalysis = () => {
                       </p>
                     </div>
                     <div className="glass-panel rounded-lg p-4">
-                      <p className="text-sm text-muted-foreground">Проблемные</p>
+                      <p className="text-sm text-muted-foreground">Проблемные сцены</p>
                       <p className="text-3xl font-bold">
-                        {analysisReport.statistics.problematic_sentences} /{' '}
-                        {analysisReport.statistics.total_sentences}
+                        {analysisReport.statistics.problematic_sentences}
+                      </p>
+                    </div>
+                    <div className="glass-panel rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Процент нарушений</p>
+                      <p className="text-3xl font-bold">
+                        {analysisReport.statistics.problematic_percentage.toFixed(1)}%
                       </p>
                     </div>
                   </div>
@@ -217,37 +487,81 @@ const ScenarioAnalysis = () => {
                   </div>
                 </div>
 
-                <div className="glass-panel rounded-lg p-6">
-                  <h2 className="text-2xl font-semibold mb-4">Детализация нарушений</h2>
-                  <div className="space-y-3">
-                    {Object.entries(analysisReport.statistics.violations).map(([key, value]) => {
-                      const labels: Record<string, string> = {
-                        violence: 'Насилие',
-                        profanity: 'Ненормативная лексика',
-                        sexual_content: 'Сексуальный контент',
-                        drugs_alcohol: 'Наркотики/Алкоголь',
-                        fear_elements: 'Элементы страха',
-                      };
-                      const total = Math.max(...Object.values(analysisReport.statistics.violations), 1);
-                      return (
-                        <div key={key} className="glass-panel rounded-lg p-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-medium">{labels[key]}</span>
-                            <span className="text-lg font-bold">{value}</span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-primary to-accent"
-                              style={{
-                                width: `${(value / total) * 100}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <Tabs defaultValue="overview" className="w-full">
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="overview">Обзор</TabsTrigger>
+                    <TabsTrigger value="parents-guide">Parents Guide</TabsTrigger>
+                    <TabsTrigger value="timeline">Временная шкала</TabsTrigger>
+                    <TabsTrigger value="charts">Графики</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="overview" className="space-y-4">
+                    <div className="glass-panel rounded-lg p-6">
+                      <h2 className="text-2xl font-semibold mb-4">Детализация нарушений</h2>
+                      <div className="space-y-3">
+                        {Object.entries(analysisReport.statistics.violations).map(([key, value]) => {
+                          const labels: Record<string, string> = {
+                            violence: 'Насилие',
+                            profanity: 'Ненормативная лексика',
+                            sexual_content: 'Сексуальный контент',
+                            drugs_alcohol: 'Наркотики/Алкоголь',
+                            fear_elements: 'Элементы страха',
+                          };
+                          const total = Math.max(...Object.values(analysisReport.statistics.violations), 1);
+                          return (
+                            <div key={key} className="glass-panel rounded-lg p-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm font-medium">{labels[key]}</span>
+                                <span className="text-lg font-bold">{value}</span>
+                              </div>
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-primary to-accent"
+                                  style={{
+                                    width: `${(value / total) * 100}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="parents-guide">
+                    <ParentsGuideSection
+                      violations={violations}
+                      onToggleFalsePositive={handleToggleFalsePositive}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="timeline" className="space-y-4">
+                    {selectedScene ? (
+                      <SceneEditor
+                        scene={selectedScene}
+                        onClose={() => setSelectedScene(null)}
+                        onSave={handleSaveScene}
+                        onReanalyze={handleReanalyzeScene}
+                      />
+                    ) : (
+                      <SceneTimeline
+                        scenes={analysisReport.scenes || []}
+                        onSceneClick={setSelectedScene}
+                      />
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="charts">
+                    <ViolationCharts
+                      data={Object.entries(analysisReport.statistics.violations).map(([key, count]) => ({
+                        category: key,
+                        count: count as number,
+                        percentage: ((count as number) / analysisReport.statistics.total_sentences) * 100,
+                      }))}
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
             )}
           </div>
