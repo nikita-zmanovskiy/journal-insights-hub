@@ -5,10 +5,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ParentsGuideSection } from '@/components/analysis/ParentsGuideSection';
 import { SceneTimeline } from '@/components/analysis/SceneTimeline';
 import { SceneEditor } from '@/components/analysis/SceneEditor';
 import { ViolationCharts } from '@/components/analysis/ViolationCharts';
+import { VersionComparison } from '@/components/analysis/VersionComparison';
+import { TimelineStatistics } from '@/components/analysis/TimelineStatistics';
+import { RecommendationsPanel } from '@/components/analysis/RecommendationsPanel';
 
 const API_URL = 'http://158.160.98.70:8000';
 
@@ -59,6 +63,10 @@ const ScenarioAnalysis = () => {
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
   const [selectedScene, setSelectedScene] = useState<any>(null);
   const [violations, setViolations] = useState<any[]>([]);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [timelineData, setTimelineData] = useState<any[]>([]);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [targetRating, setTargetRating] = useState('12+');
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -130,8 +138,24 @@ const ScenarioAnalysis = () => {
               episodes: data.detailed_violations?.[key] || [],
             };
           });
-          setViolations(processedViolations);
+        setViolations(processedViolations);
         }
+        
+        // Add version to comparison
+        const newVersion = {
+          id: `version-${Date.now()}`,
+          name: file.name,
+          uploadDate: new Date().toLocaleString('ru-RU'),
+          rating: data.overall_rating,
+          statistics: data.statistics,
+        };
+        setVersions(prev => [...prev, newVersion]);
+        
+        // Generate timeline data
+        generateTimelineData(data);
+        
+        // Generate recommendations
+        generateRecommendations(data);
 
         await supabase.from('scenarios').insert([
           {
@@ -192,6 +216,130 @@ const ScenarioAnalysis = () => {
       description: 'Отправка запроса на переанализ...',
     });
     // API call would go here
+  };
+  
+  const generateTimelineData = (data: AnalysisReport) => {
+    // Generate timeline data points (every 5 minutes for a 2-hour movie)
+    const dataPoints = [];
+    const totalMinutes = 120; // 2 hours
+    const interval = 5;
+    
+    for (let i = 0; i <= totalMinutes; i += interval) {
+      const hours = Math.floor(i / 60);
+      const minutes = i % 60;
+      const timestamp = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      
+      // Simulate distribution of violations across timeline
+      const progress = i / totalMinutes;
+      dataPoints.push({
+        timestamp,
+        time: i,
+        violence: Math.floor(Math.random() * 5 * (1 + progress)),
+        profanity: Math.floor(Math.random() * 4 * (1 + progress)),
+        sexual_content: Math.floor(Math.random() * 3),
+        drugs_alcohol: Math.floor(Math.random() * 3),
+        fear_elements: Math.floor(Math.random() * 4 * (1 + progress)),
+        total: 0,
+      });
+      
+      const lastPoint = dataPoints[dataPoints.length - 1];
+      lastPoint.total = lastPoint.violence + lastPoint.profanity + 
+                        lastPoint.sexual_content + lastPoint.drugs_alcohol + 
+                        lastPoint.fear_elements;
+    }
+    
+    setTimelineData(dataPoints);
+  };
+  
+  const generateRecommendations = (data: AnalysisReport) => {
+    const recs = [
+      {
+        id: 'rec-1',
+        scene: 'Сцена 2',
+        timestamp: '00:04:15',
+        category: 'profanity',
+        severity: 'high' as const,
+        currentText: 'Герой использует грубые выражения в адрес противника',
+        issue: 'Прямое использование нецензурной лексики повышает рейтинг до 18+',
+        suggestions: [
+          {
+            text: 'Герой использует резкие выражения в адрес противника',
+            ratingImpact: 'Снижение до 16+',
+            explanation: 'Замена нецензурной лексики на эмоционально окрашенные, но допустимые слова',
+          },
+          {
+            text: 'Герой выражает недовольство действиями противника',
+            ratingImpact: 'Снижение до 12+',
+            explanation: 'Полное переформулирование без эмоционально резких выражений',
+          },
+        ],
+      },
+      {
+        id: 'rec-2',
+        scene: 'Сцена 5',
+        timestamp: '00:15:30',
+        category: 'violence',
+        severity: 'high' as const,
+        currentText: 'Подробное описание драки с детализацией ударов и ран',
+        issue: 'Графическое описание насилия не подходит для аудитории младше 18 лет',
+        suggestions: [
+          {
+            text: 'Происходит столкновение, камера показывает общий план без детализации',
+            ratingImpact: 'Снижение до 16+',
+            explanation: 'Показ конфликта без графических деталей насилия',
+          },
+          {
+            text: 'Намек на физическое столкновение, основной акцент на эмоциях персонажей',
+            ratingImpact: 'Снижение до 12+',
+            explanation: 'Переход от физического к эмоциональному конфликту',
+          },
+        ],
+      },
+      {
+        id: 'rec-3',
+        scene: 'Сцена 8',
+        timestamp: '00:28:45',
+        category: 'drugs_alcohol',
+        severity: 'medium' as const,
+        currentText: 'Герой пьет алкоголь и демонстрирует признаки опьянения',
+        issue: 'Демонстрация употребления алкоголя требует возрастного ограничения',
+        suggestions: [
+          {
+            text: 'Герой держит бокал, но не показывается процесс употребления',
+            ratingImpact: 'Снижение до 12+',
+            explanation: 'Присутствие алкоголя без акцента на его употреблении',
+          },
+          {
+            text: 'Герой сидит в баре с безалкогольным напитком',
+            ratingImpact: 'Снижение до 6+',
+            explanation: 'Полная замена алкоголя на безалкогольную альтернативу',
+          },
+        ],
+      },
+    ];
+    
+    setRecommendations(recs);
+  };
+  
+  const handleRemoveVersion = (versionId: string) => {
+    setVersions(prev => prev.filter(v => v.id !== versionId));
+    toast({
+      title: 'Версия удалена',
+      description: 'Версия успешно удалена из сравнения',
+    });
+  };
+  
+  const handleApplyRecommendation = (recommendationId: string, suggestionIndex: number) => {
+    setRecommendations(prev =>
+      prev.map(rec =>
+        rec.id === recommendationId ? { ...rec, applied: true } : rec
+      )
+    );
+    
+    toast({
+      title: 'Рекомендация применена',
+      description: 'Изменения сохранены. Не забудьте переанализировать сценарий.',
+    });
   };
 
   const handleExportReport = () => {
@@ -488,11 +636,14 @@ const ScenarioAnalysis = () => {
                 </div>
 
                 <Tabs defaultValue="overview" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-7 h-auto flex-wrap">
                     <TabsTrigger value="overview">Обзор</TabsTrigger>
                     <TabsTrigger value="parents-guide">Parents Guide</TabsTrigger>
                     <TabsTrigger value="timeline">Временная шкала</TabsTrigger>
                     <TabsTrigger value="charts">Графики</TabsTrigger>
+                    <TabsTrigger value="chronometry">Хронометраж</TabsTrigger>
+                    <TabsTrigger value="comparison">Сравнение версий</TabsTrigger>
+                    <TabsTrigger value="recommendations">Рекомендации</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="overview" className="space-y-4">
@@ -559,6 +710,48 @@ const ScenarioAnalysis = () => {
                         count: count as number,
                         percentage: ((count as number) / analysisReport.statistics.total_sentences) * 100,
                       }))}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="chronometry">
+                    <TimelineStatistics
+                      data={timelineData}
+                      totalDuration="02:00:00"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="comparison">
+                    <VersionComparison
+                      versions={versions}
+                      onRemoveVersion={handleRemoveVersion}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="recommendations" className="space-y-4">
+                    <div className="glass-panel p-4 rounded-lg flex items-center gap-4">
+                      <label className="text-sm font-medium whitespace-nowrap">
+                        Целевой рейтинг:
+                      </label>
+                      <Input
+                        type="text"
+                        value={targetRating}
+                        onChange={(e) => setTargetRating(e.target.value)}
+                        className="max-w-[100px]"
+                        placeholder="12+"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => generateRecommendations(analysisReport)}
+                      >
+                        Обновить рекомендации
+                      </Button>
+                    </div>
+                    
+                    <RecommendationsPanel
+                      recommendations={recommendations}
+                      onApplyRecommendation={handleApplyRecommendation}
+                      targetRating={targetRating}
                     />
                   </TabsContent>
                 </Tabs>
