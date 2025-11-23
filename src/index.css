@@ -172,6 +172,10 @@ All colors MUST be HSL.
     animation: messageOut 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
   
+  .grid-cols-20 {
+    grid-template-columns: repeat(20, minmax(0, 1fr));
+  }
+  
   @keyframes messageIn {
     from {
       opacity: 0;
