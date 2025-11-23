@@ -43,6 +43,15 @@ All colors MUST be HSL.
     
     --gradient-primary: linear-gradient(135deg, hsl(174 72% 56%), hsl(174 90% 45%));
     --shadow-glow: 0 0 40px hsl(174 72% 56% / 0.3);
+    
+    --success: 142 76% 36%;
+    --success-foreground: 142 76% 96%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 10%;
+    
+    --info: 199 89% 48%;
+    --info-foreground: 199 89% 98%;
 
     --sidebar-background: 0 0% 98%;
 
@@ -95,6 +104,15 @@ All colors MUST be HSL.
     
     --gradient-primary: linear-gradient(135deg, hsl(174 72% 56%), hsl(174 90% 45%));
     --shadow-glow: 0 0 40px hsl(174 72% 56% / 0.2);
+    
+    --success: 142 76% 36%;
+    --success-foreground: 142 76% 96%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 10%;
+    
+    --info: 199 89% 48%;
+    --info-foreground: 199 89% 98%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
