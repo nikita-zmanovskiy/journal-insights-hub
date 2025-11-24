@@ -27,7 +27,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        setLoading(false);
+        
+        // Load user role when authenticated
+        if (session?.user) {
+          setTimeout(() => {
+            loadUserRole(session.user.id);
+          }, 0);
+        }
       }
     );
 
@@ -36,10 +42,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      if (session?.user) {
+        loadUserRole(session.user.id);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+  
+  const loadUserRole = async (userId: string) => {
+    try {
+      await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
+    } catch (error) {
+      console.error('Error loading user role:', error);
+    }
+  };
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({

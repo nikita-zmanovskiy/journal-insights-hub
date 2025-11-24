@@ -29,23 +29,32 @@ const Admin = () => {
   }, [user, navigate]);
 
   const checkAdminStatus = async () => {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user?.id)
-      .eq('role', 'admin')
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user?.id)
+        .eq('role', 'admin')
+        .maybeSingle();
 
-    if (error || !data) {
+      if (error || !data) {
+        toast({
+          title: 'Доступ запрещен',
+          description: 'У вас нет прав администратора',
+          variant: 'destructive',
+        });
+        navigate('/');
+      } else {
+        setIsAdmin(true);
+        loadData();
+      }
+    } catch (error) {
       toast({
-        title: 'Доступ запрещен',
-        description: 'У вас нет прав администратора',
+        title: 'Ошибка',
+        description: 'Не удалось проверить права доступа',
         variant: 'destructive',
       });
       navigate('/');
-    } else {
-      setIsAdmin(true);
-      loadData();
     }
     setLoading(false);
   };

@@ -127,6 +127,50 @@ export type Database = {
         }
         Relationships: []
       }
+      scenario_versions: {
+        Row: {
+          analysis_data: Json | null
+          changes_description: string | null
+          content: string
+          created_at: string
+          id: string
+          rating: string | null
+          scenario_id: string
+          user_id: string
+          version_number: number
+        }
+        Insert: {
+          analysis_data?: Json | null
+          changes_description?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          rating?: string | null
+          scenario_id: string
+          user_id: string
+          version_number: number
+        }
+        Update: {
+          analysis_data?: Json | null
+          changes_description?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          rating?: string | null
+          scenario_id?: string
+          user_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scenario_versions_scenario_id_fkey"
+            columns: ["scenario_id"]
+            isOneToOne: false
+            referencedRelation: "scenarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scenarios: {
         Row: {
           analysis_data: Json | null
