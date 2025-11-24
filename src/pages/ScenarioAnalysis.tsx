@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -72,6 +72,9 @@ const ScenarioAnalysis = () => {
   const [targetRating, setTargetRating] = useState('12+');
   const [filteredScenes, setFilteredScenes] = useState<any[]>([]);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
+  const [currentScenarioId, setCurrentScenarioId] = useState<string | null>(null);
+  const chartsRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -162,14 +165,27 @@ const ScenarioAnalysis = () => {
         // Generate recommendations
         generateRecommendations(data);
 
-        await supabase.from('scenarios').insert([
-          {
-            user_id: user?.id,
-            title: file.name,
-            content: await file.text(),
-            analysis_data: data,
-          },
-        ]);
+        // Save to database
+        const fileContent = await file.text();
+        const { data: scenarioData, error: scenarioError } = await supabase
+          .from('scenarios')
+          .insert([
+            {
+              user_id: user?.id,
+              title: file.name,
+              content: fileContent,
+              analysis_data: data,
+            },
+          ])
+          .select()
+          .single();
+
+        if (scenarioData && !scenarioError) {
+          setCurrentScenarioId(scenarioData.id);
+          
+          // Save initial version
+          await saveVersion(scenarioData.id, fileContent, data, 'Первоначальная версия');
+        }
 
         toast({
           title: 'Анализ завершён',
@@ -205,14 +221,29 @@ const ScenarioAnalysis = () => {
     );
   };
 
-  const handleSaveScene = (sceneId: string, newText: string) => {
-    setAnalysisReport(prev => {
-      if (!prev?.scenes) return prev;
-      return {
-        ...prev,
-        scenes: prev.scenes.map(s => (s.id === sceneId ? { ...s, text: newText } : s)),
-      };
-    });
+  const handleSaveScene = async (sceneId: string, newText: string) => {
+    const updatedReport = {
+      ...analysisReport,
+      scenes: analysisReport?.scenes?.map(s => (s.id === sceneId ? { ...s, text: newText } : s)),
+    };
+    
+    setAnalysisReport(updatedReport as any);
+    
+    // Auto-save version
+    if (currentScenarioId) {
+      const content = updatedReport.scenes?.map(s => s.text).join('\n\n') || '';
+      await saveVersion(
+        currentScenarioId,
+        content,
+        updatedReport,
+        `Изменения в сцене ${sceneId}`
+      );
+      
+      toast({
+        title: 'Изменения сохранены',
+        description: 'Версия автоматически сохранена',
+      });
+    }
   };
 
   const handleReanalyzeScene = async (sceneId: string, text: string) => {
@@ -347,10 +378,51 @@ const ScenarioAnalysis = () => {
     });
   };
 
-  const handleRestoreVersion = (versionId: string) => {
-    const version = versionHistory.find(v => v.id === versionId);
-    if (version) {
-      setAnalysisReport(prev => prev ? { ...prev, ...version } : null);
+  const saveVersion = async (
+    scenarioId: string,
+    content: string,
+    analysisData: any,
+    changesDescription: string
+  ) => {
+    const { data, error } = await supabase
+      .from('scenario_versions')
+      .insert([
+        {
+          scenario_id: scenarioId,
+          content,
+          analysis_data: analysisData,
+          rating: analysisData.overall_rating,
+          changes_description: changesDescription,
+          user_id: user?.id,
+          version_number: null, // Will be set by trigger
+        },
+      ])
+      .select()
+      .single();
+
+    if (data && !error) {
+      setVersionHistory(prev => [
+        {
+          id: data.id,
+          timestamp: data.created_at,
+          content: data.content,
+          rating: data.rating,
+          changes: data.changes_description,
+        },
+        ...prev,
+      ]);
+    }
+  };
+
+  const handleRestoreVersion = async (versionId: string) => {
+    const { data, error } = await supabase
+      .from('scenario_versions')
+      .select('*')
+      .eq('id', versionId)
+      .single();
+
+    if (data && !error && data.analysis_data) {
+      setAnalysisReport(data.analysis_data as unknown as AnalysisReport);
       toast({ title: 'Версия восстановлена' });
     }
   };
@@ -358,6 +430,32 @@ const ScenarioAnalysis = () => {
   const handleFilterScenes = (filtered: any[]) => {
     setFilteredScenes(filtered);
   };
+
+  useEffect(() => {
+    const loadVersionHistory = async () => {
+      if (!currentScenarioId) return;
+      
+      const { data, error } = await supabase
+        .from('scenario_versions')
+        .select('*')
+        .eq('scenario_id', currentScenarioId)
+        .order('created_at', { ascending: false });
+
+      if (data && !error) {
+        setVersionHistory(
+          data.map(v => ({
+            id: v.id,
+            timestamp: v.created_at,
+            content: v.content,
+            rating: v.rating,
+            changes: v.changes_description,
+          }))
+        );
+      }
+    };
+
+    loadVersionHistory();
+  }, [currentScenarioId]);
 
   const handleExportReport = () => {
     if (!analysisReport) return;
@@ -653,14 +751,16 @@ const ScenarioAnalysis = () => {
                 </div>
 
                 <Tabs defaultValue="overview" className="w-full">
-                  <TabsList className="grid w-full grid-cols-7 h-auto flex-wrap">
+                  <TabsList className="grid w-full grid-cols-9 h-auto flex-wrap">
                     <TabsTrigger value="overview">Обзор</TabsTrigger>
                     <TabsTrigger value="parents-guide">Parents Guide</TabsTrigger>
                     <TabsTrigger value="timeline">Временная шкала</TabsTrigger>
                     <TabsTrigger value="charts">Графики</TabsTrigger>
                     <TabsTrigger value="chronometry">Хронометраж</TabsTrigger>
-                    <TabsTrigger value="comparison">Сравнение версий</TabsTrigger>
+                    <TabsTrigger value="comparison">Сравнение</TabsTrigger>
                     <TabsTrigger value="recommendations">Рекомендации</TabsTrigger>
+                    <TabsTrigger value="history">История</TabsTrigger>
+                    <TabsTrigger value="filters">Фильтры</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="overview" className="space-y-4">
@@ -721,20 +821,24 @@ const ScenarioAnalysis = () => {
                   </TabsContent>
 
                   <TabsContent value="charts">
-                    <ViolationCharts
-                      data={Object.entries(analysisReport.statistics.violations).map(([key, count]) => ({
-                        category: key,
-                        count: count as number,
-                        percentage: ((count as number) / analysisReport.statistics.total_sentences) * 100,
-                      }))}
-                    />
+                    <div ref={chartsRef}>
+                      <ViolationCharts
+                        data={Object.entries(analysisReport.statistics.violations).map(([key, count]) => ({
+                          category: key,
+                          count: count as number,
+                          percentage: ((count as number) / analysisReport.statistics.total_sentences) * 100,
+                        }))}
+                      />
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="chronometry">
-                    <TimelineStatistics
-                      data={timelineData}
-                      totalDuration="02:00:00"
-                    />
+                    <div ref={timelineRef}>
+                      <TimelineStatistics
+                        data={timelineData}
+                        totalDuration="02:00:00"
+                      />
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="comparison">
@@ -763,7 +867,12 @@ const ScenarioAnalysis = () => {
                       >
                         Обновить рекомендации
                       </Button>
-                      <PDFExport report={analysisReport} violations={violations} />
+                      <PDFExport 
+                        report={analysisReport} 
+                        violations={violations}
+                        chartsRef={chartsRef}
+                        timelineRef={timelineRef}
+                      />
                     </div>
                     
                     <RecommendationsPanel

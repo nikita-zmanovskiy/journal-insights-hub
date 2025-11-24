@@ -1,20 +1,24 @@
 import { Button } from '@/components/ui/button';
 import { FileDown } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 
 interface PDFExportProps {
   report: any;
   violations: any[];
+  chartsRef?: React.RefObject<HTMLDivElement>;
+  timelineRef?: React.RefObject<HTMLDivElement>;
 }
 
-export const PDFExport = ({ report, violations }: PDFExportProps) => {
+export const PDFExport = ({ report, violations, chartsRef, timelineRef }: PDFExportProps) => {
   const generatePDF = async () => {
     try {
       toast.info('Генерация PDF отчёта...');
       
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       let yPosition = 20;
 
       // Заголовок
@@ -31,7 +35,7 @@ export const PDFExport = ({ report, violations }: PDFExportProps) => {
       pdf.text(`Проблемных сцен: ${report.statistics.problematic_sentences}`, 20, yPosition);
       yPosition += 15;
 
-      // Статистика
+      // Статистика нарушений
       pdf.setFontSize(14);
       pdf.text('Статистика нарушений:', 20, yPosition);
       yPosition += 10;
@@ -49,6 +53,92 @@ export const PDFExport = ({ report, violations }: PDFExportProps) => {
         pdf.text(`${categoryLabels[key]}: ${value}`, 25, yPosition);
         yPosition += 7;
       });
+
+      // Добавляем графики если есть
+      if (chartsRef?.current) {
+        pdf.addPage();
+        yPosition = 20;
+        pdf.setFontSize(16);
+        pdf.text('Визуализация нарушений', 20, yPosition);
+        yPosition += 10;
+
+        try {
+          const canvas = await html2canvas(chartsRef.current, {
+            scale: 2,
+            logging: false,
+            backgroundColor: '#ffffff'
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const imgWidth = pageWidth - 40;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          
+          if (yPosition + imgHeight > pageHeight - 20) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          
+          pdf.addImage(imgData, 'PNG', 20, yPosition, imgWidth, imgHeight);
+          yPosition += imgHeight + 10;
+        } catch (error) {
+          console.error('Ошибка при добавлении графиков:', error);
+        }
+      }
+
+      // Добавляем хронологию если есть
+      if (timelineRef?.current) {
+        pdf.addPage();
+        yPosition = 20;
+        pdf.setFontSize(16);
+        pdf.text('Хронология нарушений', 20, yPosition);
+        yPosition += 10;
+
+        try {
+          const canvas = await html2canvas(timelineRef.current, {
+            scale: 2,
+            logging: false,
+            backgroundColor: '#ffffff'
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const imgWidth = pageWidth - 40;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          
+          if (yPosition + imgHeight > pageHeight - 20) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          
+          pdf.addImage(imgData, 'PNG', 20, yPosition, imgWidth, imgHeight);
+        } catch (error) {
+          console.error('Ошибка при добавлении хронологии:', error);
+        }
+      }
+
+      // Детальные нарушения
+      if (violations && violations.length > 0) {
+        pdf.addPage();
+        yPosition = 20;
+        pdf.setFontSize(16);
+        pdf.text('Детальный список нарушений', 20, yPosition);
+        yPosition += 10;
+        pdf.setFontSize(10);
+
+        violations.slice(0, 20).forEach((violation, index) => {
+          if (yPosition > pageHeight - 40) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          
+          pdf.setFontSize(11);
+          pdf.text(`${index + 1}. ${categoryLabels[violation.category] || violation.category}`, 20, yPosition);
+          yPosition += 6;
+          pdf.setFontSize(9);
+          pdf.text(`Серьезность: ${violation.severity}`, 25, yPosition);
+          yPosition += 5;
+          const splitText = pdf.splitTextToSize(`Текст: ${violation.text}`, pageWidth - 50);
+          pdf.text(splitText, 25, yPosition);
+          yPosition += splitText.length * 5 + 5;
+        });
+      }
 
       // Сохранение
       pdf.save(`scenario-report-${report.rating}-${Date.now()}.pdf`);
