@@ -13,6 +13,9 @@ import { ViolationCharts } from '@/components/analysis/ViolationCharts';
 import { VersionComparison } from '@/components/analysis/VersionComparison';
 import { TimelineStatistics } from '@/components/analysis/TimelineStatistics';
 import { RecommendationsPanel } from '@/components/analysis/RecommendationsPanel';
+import { PDFExport } from '@/components/analysis/PDFExport';
+import { VersionHistoryPanel } from '@/components/analysis/VersionHistoryPanel';
+import { SceneFilter } from '@/components/analysis/SceneFilter';
 
 const API_URL = 'http://158.160.98.70:8000';
 
@@ -67,6 +70,8 @@ const ScenarioAnalysis = () => {
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [targetRating, setTargetRating] = useState('12+');
+  const [filteredScenes, setFilteredScenes] = useState<any[]>([]);
+  const [versionHistory, setVersionHistory] = useState<any[]>([]);
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -340,6 +345,18 @@ const ScenarioAnalysis = () => {
       title: 'Рекомендация применена',
       description: 'Изменения сохранены. Не забудьте переанализировать сценарий.',
     });
+  };
+
+  const handleRestoreVersion = (versionId: string) => {
+    const version = versionHistory.find(v => v.id === versionId);
+    if (version) {
+      setAnalysisReport(prev => prev ? { ...prev, ...version } : null);
+      toast({ title: 'Версия восстановлена' });
+    }
+  };
+
+  const handleFilterScenes = (filtered: any[]) => {
+    setFilteredScenes(filtered);
   };
 
   const handleExportReport = () => {
@@ -727,7 +744,7 @@ const ScenarioAnalysis = () => {
                     />
                   </TabsContent>
 
-                  <TabsContent value="recommendations" className="space-y-4">
+                   <TabsContent value="recommendations" className="space-y-4">
                     <div className="glass-panel p-4 rounded-lg flex items-center gap-4">
                       <label className="text-sm font-medium whitespace-nowrap">
                         Целевой рейтинг:
@@ -746,6 +763,7 @@ const ScenarioAnalysis = () => {
                       >
                         Обновить рекомендации
                       </Button>
+                      <PDFExport report={analysisReport} violations={violations} />
                     </div>
                     
                     <RecommendationsPanel
@@ -753,6 +771,28 @@ const ScenarioAnalysis = () => {
                       onApplyRecommendation={handleApplyRecommendation}
                       targetRating={targetRating}
                     />
+                  </TabsContent>
+
+                  <TabsContent value="history">
+                    <VersionHistoryPanel
+                      versions={versionHistory}
+                      onRestore={handleRestoreVersion}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="filters">
+                    <SceneFilter
+                      scenes={analysisReport.scenes || []}
+                      onFilterChange={handleFilterScenes}
+                    />
+                    {filteredScenes.length > 0 && (
+                      <div className="mt-6">
+                        <SceneTimeline
+                          scenes={filteredScenes}
+                          onSceneClick={setSelectedScene}
+                        />
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               </div>

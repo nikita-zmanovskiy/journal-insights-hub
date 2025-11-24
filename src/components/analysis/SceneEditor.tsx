@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 
 interface Scene {
   id: string;
@@ -23,17 +24,34 @@ interface SceneEditorProps {
 export const SceneEditor = ({ scene, onClose, onSave, onReanalyze }: SceneEditorProps) => {
   const [editedText, setEditedText] = useState(scene?.text || '');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [violationThreshold] = useState(5); // Порог нарушений для уведомления
+
+  useEffect(() => {
+    // Проверка на превышение порога нарушений
+    if (scene && scene.violations.length > violationThreshold) {
+      toast.warning(`Внимание! В сцене обнаружено ${scene.violations.length} нарушений, что превышает установленный порог (${violationThreshold}).`, {
+        duration: 5000,
+      });
+    }
+  }, [scene, violationThreshold]);
 
   if (!scene) return null;
 
   const handleSave = () => {
     onSave(scene.id, editedText);
+    toast.success('Изменения сохранены');
     onClose();
   };
 
   const handleReanalyze = async () => {
     setIsAnalyzing(true);
-    await onReanalyze(scene.id, editedText);
+    toast.info('Начинается переанализ сцены...');
+    try {
+      await onReanalyze(scene.id, editedText);
+      toast.success('Анализ завершён');
+    } catch (error) {
+      toast.error('Ошибка при анализе сцены');
+    }
     setIsAnalyzing(false);
   };
 
